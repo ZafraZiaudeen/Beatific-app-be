@@ -4,6 +4,7 @@ import cors from 'cors'
 import { connectDatabase, disconnectDatabase } from './src/infrastructure/database/connection'
 import { migrateJournals } from './src/domain/models/Journal'
 import apiRouter from './src/api/index'
+import { enforceMaintenanceMode } from './src/api/middleware/maintenanceMiddleware'
 
 const app = express()
 
@@ -20,7 +21,7 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'beatific-app-be', time: new Date().toISOString() })
 })
 
-app.use('/api/v1', apiRouter)
+app.use('/api/v1', enforceMaintenanceMode, apiRouter)
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' })

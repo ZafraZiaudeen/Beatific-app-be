@@ -1,15 +1,28 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { User } from '../domain/models/User'
+import { Settings } from '../domain/models/Settings'
 import type { IUser } from '../domain/interfaces/IUser'
 import type { LoginCredentials, RegisterCredentials, AuthResponse } from '../domain/interfaces/IAuth'
 
-const JWT_SECRET     = process.env.JWT_SECRET     ?? 'beatific-user-secret-change-in-production'
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '30d'
+const JWT_SECRET = process.env.JWT_SECRET ?? 'beatific-user-secret-change-in-production'
+
+async function getSessionExpiry(): Promise<string> {
+  const settings = await Settings.findOne()
+  const hours = settings?.sessionTimeoutHours ?? 168
+  return `${hours}h`
+}
 
 export const authService = {
   async register(credentials: RegisterCredentials): Promise<AuthResponse> {
     const { name, email, password } = credentials
+
+    const settings = await Settings.findOne()
+    if (settings && !settings.allowNewRegistrations) {
+      const err: any = new Error('New registrations are currently disabled by the administrator.')
+      err.statusCode = 403
+      throw err
+    }
 
     const existing = await User.findOne({ email })
     if (existing) {
@@ -21,13 +34,14 @@ export const authService = {
     const hashed = await bcrypt.hash(password, 10)
     const user   = await User.create({ name, email, password: hashed })
 
+    const expiresIn = `${settings?.sessionTimeoutHours ?? 168}h`
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, name: user.name },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
+      { expiresIn } as jwt.SignOptions
     )
 
-    return { _id: user._id.toString(), name: user.name, email: user.email, token }
+    return { _id: user._id.toString(), name: user.name, email: user.email, role: user.role, token }
   },
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
@@ -40,6 +54,12 @@ export const authService = {
       throw err
     }
 
+    if (user.isBanned) {
+      const err: any = new Error('Your account has been banned. Please contact support.')
+      err.statusCode = 403
+      throw err
+    }
+
     const isMatch = await bcrypt.compare(password, user.password)
     if (!isMatch) {
       const err: any = new Error('Invalid email or password')
@@ -47,15 +67,16 @@ export const authService = {
       throw err
     }
 
+    const expiresIn = await getSessionExpiry()
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, name: user.name },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
+      { expiresIn } as jwt.SignOptions
     )
 
     await User.findByIdAndUpdate(user._id, { lastActiveAt: new Date() })
 
-    return { _id: user._id.toString(), name: user.name, email: user.email, token }
+    return { _id: user._id.toString(), name: user.name, email: user.email, role: user.role, token }
   },
 
   async getProfile(userId: string): Promise<Omit<IUser, 'password'>> {
@@ -70,7 +91,7 @@ export const authService = {
 
   async updateProfile(
     userId: string,
-    data: { name?: string; avatar?: string; bio?: string }
+    data: { name?: string; avatar?: string; bio?: string; email?: string }
   ): Promise<Omit<IUser, 'password'>> {
     const user = await User.findByIdAndUpdate(
       userId,

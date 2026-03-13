@@ -4,6 +4,7 @@ export interface IUser extends Document {
   name: string
   email: string
   password: string
+  role?: string
   avatar?: string
   bio?: string
   isBanned?: boolean
