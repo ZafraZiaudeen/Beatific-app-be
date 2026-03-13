@@ -8,6 +8,7 @@ import contentRoutes        from './routes/contentRoutes'
 import permissionRoutes     from './routes/permissionRoutes'
 import journalRoutes        from './routes/journalRoutes'
 import homeSectionRoutes    from './routes/homeSectionRoutes'
+import settingsRoutes       from './routes/settingsRoutes'
 
 const router = Router()
 
@@ -20,5 +21,6 @@ router.use('/content',          contentRoutes)
 router.use('/permissions',      permissionRoutes)      
 router.use('/journals',         journalRoutes)         
 router.use('/home-sections',    homeSectionRoutes)   
+router.use('/settings',         settingsRoutes)
 
 export default router

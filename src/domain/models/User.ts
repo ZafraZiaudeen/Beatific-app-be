@@ -8,6 +8,7 @@ const UserSchema = new Schema<IUser>(
     password: { type: String, required: true, minlength: 6 },
     avatar:   { type: String },
     bio:      { type: String, maxlength: 300 },
+    role:     { type: String, enum: ['admin', 'super_admin', 'user'], default: 'admin' },
     isBanned: { type: Boolean, default: false },
     lastActiveAt: { type: Date },
   },
