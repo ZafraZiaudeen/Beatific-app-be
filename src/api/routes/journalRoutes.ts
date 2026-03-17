@@ -190,7 +190,7 @@ router.put('/', requireAuth, async (req, res) => {
       const journal = await Journal.findOneAndUpdate(
         { _id: journalId, userId },
         { pageOrder },
-        { new: true }
+        { returnDocument: 'after' }
       ).lean()
       if (!journal) {
         res.status(404).json({ success: false, message: 'Journal not found' })
@@ -207,7 +207,7 @@ router.put('/', requireAuth, async (req, res) => {
     const journal = await Journal.findOneAndUpdate(
       { userId, templateId, copyNumber: 0 },
       { userId, templateId, copyNumber: 0, pageOrder },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     ).lean()
     res.json({ success: true, data: journal })
   } catch (err: any) {

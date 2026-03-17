@@ -96,7 +96,7 @@ export const authService = {
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: data },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).select('-password')
     if (!user) {
       const err: any = new Error('User not found')
