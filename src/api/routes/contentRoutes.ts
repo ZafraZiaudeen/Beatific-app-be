@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { Content } from '../../domain/models/Content'
+import { DeletedContentSnapshot } from '../../domain/models/DeletedContentSnapshot'
+import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
 
 const router = Router()
 
@@ -37,12 +39,27 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const content = await Content.findById(req.params.id).lean()
-    if (!content) {
-      res.status(404).json({ success: false, message: 'Content not found' })
+    const id = req.params.id
+    const content = await Content.findById(id).lean()
+    if (content) {
+      res.json({ success: true, data: content })
       return
     }
-    res.json({ success: true, data: content })
+
+    // Fallback: check deleted snapshots so journal users can still view the content
+    const contentSnap = await DeletedContentSnapshot.findOne({ sourceContentId: id }).lean()
+    if (contentSnap) {
+      res.json({ success: true, data: { ...contentSnap.snapshot, isSourceDeleted: true } })
+      return
+    }
+
+    const templateSnap = await DeletedTemplateSnapshot.findOne({ sourceTemplateId: id }).lean()
+    if (templateSnap) {
+      res.json({ success: true, data: { ...templateSnap.snapshot, isSourceDeleted: true } })
+      return
+    }
+
+    res.status(404).json({ success: false, message: 'Content not found' })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
   }

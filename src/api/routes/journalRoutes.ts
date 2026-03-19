@@ -2,22 +2,44 @@ import { Router } from 'express'
 import { Journal } from '../../domain/models/Journal'
 import { Content } from '../../domain/models/Content'
 import { Template } from '../../domain/models/Template'
+import { DeletedContentSnapshot } from '../../domain/models/DeletedContentSnapshot'
+import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
 import { requireAuth } from '../middleware/authMiddleware'
 
 const MAX_COPIES = 3
 
 const router = Router()
 
+
 async function findContentById(id: string) {
   return (await Content.findById(id).lean()) ?? (await Template.findById(id).lean())
 }
 
+async function findDeletedSnapshot(id: string): Promise<Record<string, unknown> | null> {
+  const contentSnap = await DeletedContentSnapshot.findOne({ sourceContentId: id }).lean()
+  if (contentSnap) return contentSnap.snapshot as Record<string, unknown>
+
+  const templateSnap = await DeletedTemplateSnapshot.findOne({ sourceTemplateId: id }).lean()
+  if (templateSnap) return templateSnap.snapshot as Record<string, unknown>
+
+  return null
+}
+
+
 async function enrichJournal(j: any) {
-  const content = await findContentById(j.templateId)
-  if (!content) return null
+  let content = await findContentById(j.templateId)
+  let isSourceDeleted = false
+
+  if (!content) {
+    content = await findDeletedSnapshot(j.templateId) as any
+    if (!content) return null
+    isSourceDeleted = true
+  }
+
   const copyLabel = j.copyNumber === 0
     ? (content as any).name
     : `${(content as any).name} - Copy ${j.copyNumber}`
+
   return {
     _id: j._id,
     templateId: j.templateId,
@@ -26,6 +48,7 @@ async function enrichJournal(j: any) {
     pageOrder: j.pageOrder,
     updatedAt: j.updatedAt,
     createdAt: j.createdAt,
+    isSourceDeleted,
     content: {
       _id: (content as any)._id,
       name: (content as any).name,
@@ -63,8 +86,13 @@ router.get('/recent-pages', requireAuth, async (req, res) => {
     for (const j of journals) {
       if (pages.length >= 8) break
 
-      const content = await findContentById(j.templateId)
-      if (!content) continue
+      let content = await findContentById(j.templateId)
+      let isSourceDeleted = false
+      if (!content) {
+        content = await findDeletedSnapshot(j.templateId) as any
+        if (!content) continue
+        isSourceDeleted = true
+      }
 
       const allPages = (content as any).pages ?? []
       const selectedIndices = j.pageOrder ?? []
@@ -80,6 +108,7 @@ router.get('/recent-pages', requireAuth, async (req, res) => {
           templateName: (content as any).name,
           templateCoverImageUrl: (content as any).coverImageUrl,
           subcategory: (content as any).subcategory,
+          isSourceDeleted,
           pageIndex: idx,
           localIndex: li,
           pageId: page.id,
@@ -115,12 +144,33 @@ router.get('/for-template/:templateId', requireAuth, async (req, res) => {
   }
 })
 
+
 router.post('/create-copy', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id
     const { templateId, pageOrder } = req.body
     if (!templateId || !Array.isArray(pageOrder)) {
       res.status(400).json({ success: false, message: 'templateId and pageOrder[] are required' })
+      return
+    }
+
+    const primaryContent = await findContentById(templateId)
+    if (!primaryContent) {
+      const contentSnapshot = await DeletedContentSnapshot.findOne({ sourceContentId: templateId }).lean()
+      const templateSnapshot = contentSnapshot
+        ? contentSnapshot
+        : await DeletedTemplateSnapshot.findOne({ sourceTemplateId: templateId }).lean()
+
+      if (contentSnapshot || templateSnapshot) {
+        res.status(410).json({
+          success: false,
+          code: 'SOURCE_CONTENT_DELETED',
+          message:
+            'This journal can no longer be copied because its underlying content has been permanently removed by an administrator.',
+        })
+        return
+      }
+      res.status(404).json({ success: false, message: 'Source content not found.' })
       return
     }
 
@@ -210,6 +260,21 @@ router.put('/', requireAuth, async (req, res) => {
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     ).lean()
     res.json({ success: true, data: journal })
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.id
+    const { id } = req.params
+    const deleted = await Journal.findOneAndDelete({ _id: id, userId }).lean()
+    if (!deleted) {
+      res.status(404).json({ success: false, message: 'Journal not found' })
+      return
+    }
+    res.json({ success: true, data: { _id: id } })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
   }

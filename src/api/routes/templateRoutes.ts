@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { templateService } from '../../application/templateService'
+import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
 
 const router = Router()
 
@@ -14,12 +15,20 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const template = await templateService.getById(req.params.id)
-    if (!template) {
-      res.status(404).json({ success: false, message: 'Template not found' })
+    const id = req.params.id
+    const template = await templateService.getById(id)
+    if (template) {
+      res.json({ success: true, data: template })
       return
     }
-    res.json({ success: true, data: template })
+
+    const snap = await DeletedTemplateSnapshot.findOne({ sourceTemplateId: id }).lean()
+    if (snap) {
+      res.json({ success: true, data: { ...snap.snapshot, isSourceDeleted: true } })
+      return
+    }
+
+    res.status(404).json({ success: false, message: 'Template not found' })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
   }

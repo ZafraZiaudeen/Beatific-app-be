@@ -9,6 +9,7 @@ import permissionRoutes     from './routes/permissionRoutes'
 import journalRoutes        from './routes/journalRoutes'
 import homeSectionRoutes    from './routes/homeSectionRoutes'
 import settingsRoutes       from './routes/settingsRoutes'
+import favoritesRoutes      from './routes/favoritesRoutes'
 
 const router = Router()
 
@@ -22,5 +23,6 @@ router.use('/permissions',      permissionRoutes)
 router.use('/journals',         journalRoutes)         
 router.use('/home-sections',    homeSectionRoutes)   
 router.use('/settings',         settingsRoutes)
+router.use('/favorites',        favoritesRoutes)
 
 export default router
