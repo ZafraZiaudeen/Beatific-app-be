@@ -10,6 +10,40 @@ const MAX_COPIES = 3
 
 const router = Router()
 
+type PageOrderRef = string | number
+
+function resolvePageIndexFromRef(allPages: any[], ref: PageOrderRef): number {
+  if (typeof ref === 'number' && Number.isInteger(ref)) {
+    return ref >= 0 && ref < allPages.length ? ref : -1
+  }
+
+  if (typeof ref === 'string') {
+    const byId = allPages.findIndex((p) => p?.id === ref)
+    if (byId >= 0) return byId
+
+    if (/^\d+$/.test(ref)) {
+      const asIndex = Number(ref)
+      return asIndex >= 0 && asIndex < allPages.length ? asIndex : -1
+    }
+  }
+
+  return -1
+}
+
+function resolvePageEntries(allPages: any[], pageOrder: PageOrderRef[]) {
+  const seen = new Set<number>()
+  const entries: Array<{ index: number; localIndex: number; page: any }> = []
+
+  pageOrder.forEach((ref, localIndex) => {
+    const index = resolvePageIndexFromRef(allPages, ref)
+    if (index < 0 || seen.has(index)) return
+    seen.add(index)
+    entries.push({ index, localIndex, page: allPages[index] })
+  })
+
+  return entries
+}
+
 
 async function findContentById(id: string) {
   return (await Content.findById(id).lean()) ?? (await Template.findById(id).lean())
@@ -95,11 +129,12 @@ router.get('/recent-pages', requireAuth, async (req, res) => {
       }
 
       const allPages = (content as any).pages ?? []
-      const selectedIndices = j.pageOrder ?? []
-      for (let li = 0; li < selectedIndices.length; li++) {
+      const selectedRefs = (j.pageOrder ?? []) as PageOrderRef[]
+      const selectedEntries = resolvePageEntries(allPages, selectedRefs)
+      for (const entry of selectedEntries) {
         if (pages.length >= 8) break
-        const idx = selectedIndices[li]
-        const page = allPages[idx]
+        const idx = entry.index
+        const page = entry.page
         if (!page) continue
         pages.push({
           journalId: j._id,
@@ -110,7 +145,7 @@ router.get('/recent-pages', requireAuth, async (req, res) => {
           subcategory: (content as any).subcategory,
           isSourceDeleted,
           pageIndex: idx,
-          localIndex: li,
+          localIndex: entry.localIndex,
           pageId: page.id,
           pageName: page.name,
           pageBackground: page.background,
@@ -192,7 +227,7 @@ router.post('/create-copy', requireAuth, async (req, res) => {
       userId,
       templateId,
       copyNumber: nextCopy,
-      pageOrder,
+      pageOrder: pageOrder as PageOrderRef[],
     })
 
     res.json({ success: true, data: journal.toObject() })
@@ -239,7 +274,7 @@ router.put('/', requireAuth, async (req, res) => {
     if (journalId) {
       const journal = await Journal.findOneAndUpdate(
         { _id: journalId, userId },
-        { pageOrder },
+        { pageOrder: pageOrder as PageOrderRef[] },
         { returnDocument: 'after' }
       ).lean()
       if (!journal) {
@@ -256,7 +291,7 @@ router.put('/', requireAuth, async (req, res) => {
     }
     const journal = await Journal.findOneAndUpdate(
       { userId, templateId, copyNumber: 0 },
-      { userId, templateId, copyNumber: 0, pageOrder },
+      { userId, templateId, copyNumber: 0, pageOrder: pageOrder as PageOrderRef[] },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     ).lean()
     res.json({ success: true, data: journal })
