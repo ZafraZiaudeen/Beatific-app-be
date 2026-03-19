@@ -1,5 +1,11 @@
 import { Document } from 'mongoose'
 
+export interface IFavoriteEntry {
+  itemId: string
+  itemType: 'template' | 'sticker' | 'content'
+  addedAt: Date
+}
+
 export interface IUser extends Document {
   name: string
   email: string
@@ -9,6 +15,7 @@ export interface IUser extends Document {
   bio?: string
   isBanned?: boolean
   lastActiveAt?: Date
+  favorites?: IFavoriteEntry[]
   createdAt: Date
   updatedAt: Date
 }

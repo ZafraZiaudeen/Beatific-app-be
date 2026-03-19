@@ -32,7 +32,6 @@ router.get('/public', async (_req, res, next) => {
   }
 })
 
-// ── GET /settings ─────────────────────────────────────────
 router.get('/', requireAuth, async (_req, res, next) => {
   try {
     const settings = await getOrCreateSettings()
@@ -123,6 +122,21 @@ router.post('/ban-all-users', requireAuth, async (_req, res) => {
     })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message ?? 'Failed to ban users' })
+  }
+})
+
+router.put('/favorites', requireAuth, async (req, res, next) => {
+  try {
+    const settings = await getOrCreateSettings()
+    const { favoritesEnabled, maxFavoritesPerUser } = req.body
+
+    if (favoritesEnabled !== undefined) settings.favoritesEnabled = Boolean(favoritesEnabled)
+    if (maxFavoritesPerUser !== undefined) settings.maxFavoritesPerUser = Math.max(1, Number(maxFavoritesPerUser))
+
+    await settings.save()
+    res.json({ success: true, data: settings, message: 'Favorites settings updated' })
+  } catch (err) {
+    next(err)
   }
 })
 

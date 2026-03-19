@@ -58,6 +58,7 @@ export interface IContent {
   coverImageUrl?: string
   createdBy?: string
   isPublished: boolean
+
   createdAt?: Date
   updatedAt?: Date
 }

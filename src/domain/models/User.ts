@@ -1,6 +1,15 @@
 import { Schema, model } from 'mongoose'
 import { IUser } from '../interfaces/IUser'
 
+const FavoriteSchema = new Schema(
+  {
+    itemId:   { type: String, required: true },
+    itemType: { type: String, required: true, enum: ['template', 'sticker', 'content'] },
+    addedAt:  { type: Date, default: Date.now },
+  },
+  { _id: false }
+)
+
 const UserSchema = new Schema<IUser>(
   {
     name:     { type: String, required: true, trim: true },
@@ -11,6 +20,7 @@ const UserSchema = new Schema<IUser>(
     role:     { type: String, enum: ['admin', 'super_admin', 'user'], default: 'admin' },
     isBanned: { type: Boolean, default: false },
     lastActiveAt: { type: Date },
+    favorites: { type: [FavoriteSchema], default: [] },
   },
   { timestamps: true }
 )

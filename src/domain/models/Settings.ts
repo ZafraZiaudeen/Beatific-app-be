@@ -23,6 +23,8 @@ export interface ISettings extends Document {
   codeSessionResetTime: number          
   maxForgotPasswordAttempts: number        
   forgotPasswordWindowMinutes: number     
+  favoritesEnabled: boolean
+  maxFavoritesPerUser: number
   updatedAt: Date
 }
 
@@ -49,7 +51,9 @@ const settingsSchema = new Schema<ISettings>(
     codeResendCooldown:            { type: Number, default: 60 },     
     codeSessionResetTime:          { type: Number, default: 30 },    
     maxForgotPasswordAttempts:     { type: Number, default: 3 },
-    forgotPasswordWindowMinutes:   { type: Number, default: 30 },    
+    forgotPasswordWindowMinutes:   { type: Number, default: 30 },
+    favoritesEnabled:              { type: Boolean, default: true },
+    maxFavoritesPerUser:           { type: Number, default: 20 },
   },
   { timestamps: true }
 )
