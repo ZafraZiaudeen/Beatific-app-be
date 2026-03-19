@@ -27,6 +27,7 @@ export interface IContentElement {
   lineCap?: string
   lineJoin?: string
   numPoints?: number
+  numSides?: number
   innerRadius?: number
   outerRadius?: number
   data?: string
@@ -77,7 +78,7 @@ const ElementSchema = new Schema(
     fontStyle:    String, align: String, lineHeight: Number, letterSpacing: Number,
     src:          String, points: [Number],
     lineCap:      String, lineJoin: String,
-    numPoints:    Number, innerRadius: Number, outerRadius: Number,
+    numPoints:    Number, numSides: Number, innerRadius: Number, outerRadius: Number,
     data:         String, locked: Boolean, visible: Boolean,
     name:         String, zIndex: Number,
   },
