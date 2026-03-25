@@ -5,6 +5,7 @@ import { Template } from '../../domain/models/Template'
 import { DeletedContentSnapshot } from '../../domain/models/DeletedContentSnapshot'
 import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
 import { requireAuth } from '../middleware/authMiddleware'
+import { updateLastActive } from '../middleware/authMiddleware'
 
 const MAX_COPIES = 3
 
@@ -95,7 +96,7 @@ async function enrichJournal(j: any) {
   }
 }
 
-router.get('/mine', requireAuth, async (req, res) => {
+router.get('/mine', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
     const journals = await Journal.find({ userId }).sort({ updatedAt: -1 }).lean()
@@ -110,7 +111,7 @@ router.get('/mine', requireAuth, async (req, res) => {
   }
 })
 
-router.get('/recent-pages', requireAuth, async (req, res) => {
+router.get('/recent-pages', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
     const journals = await Journal.find({ userId }).sort({ updatedAt: -1 }).limit(8).lean()
@@ -163,7 +164,7 @@ router.get('/recent-pages', requireAuth, async (req, res) => {
   }
 })
 
-router.get('/for-template/:templateId', requireAuth, async (req, res) => {
+router.get('/for-template/:templateId', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
     const { templateId } = req.params
@@ -180,7 +181,7 @@ router.get('/for-template/:templateId', requireAuth, async (req, res) => {
 })
 
 
-router.post('/create-copy', requireAuth, async (req, res) => {
+router.post('/create-copy', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
     const { templateId, pageOrder } = req.body
@@ -240,7 +241,7 @@ router.post('/create-copy', requireAuth, async (req, res) => {
   }
 })
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
     const { templateId, journalId } = req.query as Record<string, string>

@@ -1,3 +1,15 @@
+import { User } from '../../domain/models/User'
+
+export async function updateLastActive(req: Request, res: Response, next: NextFunction) {
+  if (req.user && req.user.id) {
+    try {
+      await User.findByIdAndUpdate(req.user.id, { lastActiveAt: new Date() })
+    } catch (err) {
+      console.warn('Failed to update lastActiveAt:', err)
+    }
+  }
+  next()
+}
 import type { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import type { AuthPayload } from '../../domain/interfaces/IAuth'

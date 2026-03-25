@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/authMiddleware'
+import { updateLastActive } from '../middleware/authMiddleware'
 import { User } from '../../domain/models/User'
 import { Template } from '../../domain/models/Template'
 import { Sticker } from '../../domain/models/Sticker'
@@ -8,7 +9,7 @@ import { Settings } from '../../domain/models/Settings'
 
 const router = Router()
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, updateLastActive, async (req, res) => {
   try {
     const user = await User.findById(req.user!.id).lean()
     if (!user) {
@@ -51,7 +52,7 @@ router.get('/', requireAuth, async (req, res) => {
   }
 })
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, updateLastActive, async (req, res) => {
   try {
     const { itemId, itemType } = req.body
     if (!itemId || !itemType) {
@@ -103,7 +104,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 })
 
-router.delete('/:itemId', requireAuth, async (req, res) => {
+router.delete('/:itemId', requireAuth, updateLastActive, async (req, res) => {
   try {
     const { itemId } = req.params
 
@@ -128,7 +129,7 @@ router.delete('/:itemId', requireAuth, async (req, res) => {
   }
 })
 
-router.get('/ids', requireAuth, async (req, res) => {
+router.get('/ids', requireAuth, updateLastActive, async (req, res) => {
   try {
     const user = await User.findById(req.user!.id).select('favorites').lean()
     if (!user) {
