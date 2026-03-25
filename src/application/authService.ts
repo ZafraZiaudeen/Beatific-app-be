@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { User } from '../domain/models/User'
 import { Settings } from '../domain/models/Settings'
+import { Journal } from '../domain/models/Journal'
+import { VerificationCode } from '../domain/models/VerificationCode'
 import type { IUser } from '../domain/interfaces/IUser'
 import type { LoginCredentials, RegisterCredentials, AuthResponse } from '../domain/interfaces/IAuth'
 
@@ -32,7 +34,7 @@ export const authService = {
     }
 
     const hashed = await bcrypt.hash(password, 10)
-    const user   = await User.create({ name, email, password: hashed })
+    const user   = await User.create({ name, email, password: hashed, role: 'user' })
 
     const expiresIn = `${settings?.sessionTimeoutHours ?? 168}h`
     const token = jwt.sign(
@@ -133,11 +135,18 @@ export const authService = {
   },
 
   async deleteAccount(userId: string): Promise<void> {
-    const user = await User.findByIdAndDelete(userId)
+    const user = await User.findById(userId).select('email')
     if (!user) {
       const err: any = new Error('User not found')
       err.statusCode = 404
       throw err
     }
+
+    await Promise.all([
+      Journal.deleteMany({ userId }),
+      VerificationCode.deleteMany({ email: user.email }),
+    ])
+
+    await User.deleteOne({ _id: userId })
   },
 }

@@ -5,7 +5,6 @@ import { Category } from '../../domain/models/Category'
 import { Content } from '../../domain/models/Content'
 
 const router = Router()
-
 router.get('/', async (_req, res) => {
   try {
     const perms = await Permission.find({ scope: 'home-section', enabled: true }).lean()
@@ -27,73 +26,117 @@ router.get('/', async (_req, res) => {
     }
 
     const enabledSlugs = [...permMap.keys()]
-    const mainCats = await MainCategory.find({ slug: { $in: enabledSlugs } })
-      .sort({ order: 1, createdAt: 1 })
-      .lean()
 
+    const allAllowedCatSlugs: string[] = []
     const allAllowedItemIds: string[] = []
-    for (const { items } of permMap.values()) {
+    for (const { categories, items } of permMap.values()) {
+      allAllowedCatSlugs.push(...categories)
       allAllowedItemIds.push(...items)
     }
 
-    const sections: any[] = []
+    const [mainCats, allCategories] = await Promise.all([
+      MainCategory.find({ slug: { $in: enabledSlugs } })
+        .sort({ order: 1, createdAt: 1 })
+        .lean(),
+      Category.find({
+        itemType: { $in: enabledSlugs },
+        slug: { $in: allAllowedCatSlugs },
+      })
+        .sort({ order: 1, createdAt: 1 })
+        .lean(),
+    ])
+
+    const catsByItemType = new Map<string, typeof allCategories>()
+    for (const cat of allCategories) {
+      const key = cat.itemType as string
+      if (!catsByItemType.has(key)) catsByItemType.set(key, [])
+      catsByItemType.get(key)!.push(cat)
+    }
+
+    interface SectionDraft {
+      mc: typeof mainCats[0]
+      cat: typeof allCategories[0]
+    }
+    const drafts: SectionDraft[] = []
+    const contentOrConditions: any[] = []
 
     for (const mc of mainCats) {
       const perm = permMap.get(mc.slug)
       if (!perm) continue
-      const { categories: allowedCatSlugs, items: allowedItemIds } = perm
+      const cats = catsByItemType.get(mc.slug) ?? []
+      const { items: allowedItemIds } = perm
 
-      const categories = await Category.find({
-        itemType: mc.slug,
-        slug: { $in: allowedCatSlugs },
-      })
-        .sort({ order: 1, createdAt: 1 })
-        .lean()
+      for (const cat of cats) {
+        drafts.push({ mc, cat })
 
-      for (const cat of categories) {
-        const catItemIds = allowedItemIds.length > 0
-          ? allowedItemIds 
-          : []
-
-        let content
-        if (catItemIds.length > 0) {
-          content = await Content.find({
-            _id: { $in: catItemIds },
+        if (allowedItemIds.length > 0) {
+          contentOrConditions.push({
+            _id: { $in: allowedItemIds },
             itemType: mc.slug,
             category: cat.slug,
             isPublished: true,
-          } as any)
-            .sort({ createdAt: -1 })
-            .lean()
+          })
         } else {
-          content = await Content.find({
+          contentOrConditions.push({
             itemType: mc.slug,
             category: cat.slug,
             isPublished: true,
           })
-            .sort({ createdAt: -1 })
-            .limit(20)
-            .lean()
         }
+      }
+    }
 
-        if (content.length > 0) {
-          sections.push({
-            mainCategory: {
-              _id: mc._id,
-              name: mc.name,
-              slug: mc.slug,
-              icon: mc.icon,
-              color: mc.color,
-            },
-            category: {
-              _id: cat._id,
-              name: cat.name,
-              slug: cat.slug,
-              color: cat.color,
-            },
-            content,
-          })
-        }
+    if (drafts.length === 0) {
+      res.json({ success: true, data: [] })
+      return
+    }
+
+    const allContent = await Content.find(
+      contentOrConditions.length === 1
+        ? contentOrConditions[0]
+        : { $or: contentOrConditions }
+    )
+      .sort({ createdAt: -1 })
+      .lean()
+
+    const contentMap = new Map<string, typeof allContent>()
+    for (const item of allContent) {
+      const key = `${item.itemType}::${item.category}`
+      if (!contentMap.has(key)) contentMap.set(key, [])
+      contentMap.get(key)!.push(item)
+    }
+
+    const sections: any[] = []
+    for (const { mc, cat } of drafts) {
+      const perm = permMap.get(mc.slug)
+      const allowedItemIds = perm?.items ?? []
+      const key = `${mc.slug}::${cat.slug}`
+      let items = contentMap.get(key) ?? []
+
+      if (allowedItemIds.length > 0) {
+        const idSet = new Set(allowedItemIds)
+        items = items.filter((c) => idSet.has(String(c._id)))
+      } else {
+        items = items.slice(0, 20)
+      }
+
+      if (items.length > 0) {
+        sections.push({
+          mainCategory: {
+            _id: mc._id,
+            name: mc.name,
+            slug: mc.slug,
+            icon: mc.icon,
+            color: mc.color,
+          },
+          category: {
+            _id: cat._id,
+            name: cat.name,
+            slug: cat.slug,
+            color: cat.color,
+          },
+          content: items,
+        })
       }
     }
 
