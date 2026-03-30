@@ -9,6 +9,27 @@ import { Settings } from '../../domain/models/Settings'
 
 const router = Router()
 
+function toFavoriteSummary(item: any, fallbackItemType: 'template' | 'sticker' | 'content') {
+  const pages = Array.isArray(item?.pages) ? item.pages : []
+  const firstPage = pages[0] ?? null
+
+  return {
+    _id: item._id,
+    name: item.name,
+    description: item.description,
+    category: item.category,
+    subcategory: item.subcategory,
+    tags: item.tags ?? [],
+    coverImageUrl: item.coverImageUrl,
+    isPublished: item.isPublished,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    itemType: item.itemType || fallbackItemType,
+    pageCount: pages.length,
+    coverBackground: firstPage?.background,
+  }
+}
+
 router.get('/', requireAuth, updateLastActive, async (req, res) => {
   try {
     const user = await User.findById(req.user!.id).lean()
@@ -32,9 +53,9 @@ router.get('/', requireAuth, updateLastActive, async (req, res) => {
     ])
 
     const itemMap: Record<string, unknown> = {}
-    contents.forEach((c: any)  => { itemMap[c._id.toString()] = { ...c, itemType: c.itemType || 'content' } })
-    templates.forEach((t: any) => { itemMap[t._id.toString()] = itemMap[t._id.toString()] ?? { ...t, itemType: 'template' } })
-    stickers.forEach((s: any)  => { itemMap[s._id.toString()] = itemMap[s._id.toString()] ?? { ...s, itemType: 'sticker'  } })
+    contents.forEach((c: any)  => { itemMap[c._id.toString()] = toFavoriteSummary(c, 'content') })
+    templates.forEach((t: any) => { itemMap[t._id.toString()] = itemMap[t._id.toString()] ?? toFavoriteSummary(t, 'template') })
+    stickers.forEach((s: any)  => { itemMap[s._id.toString()] = itemMap[s._id.toString()] ?? toFavoriteSummary(s, 'sticker') })
 
     const populated = favorites
       .slice()
