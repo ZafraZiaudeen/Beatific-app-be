@@ -7,6 +7,7 @@ import mainCategoryRoutes   from './routes/mainCategoryRoutes'
 import contentRoutes        from './routes/contentRoutes'
 import permissionRoutes     from './routes/permissionRoutes'
 import journalRoutes        from './routes/journalRoutes'
+import calendarRoutes       from './routes/calendarRoutes'
 import homeSectionRoutes    from './routes/homeSectionRoutes'
 import settingsRoutes       from './routes/settingsRoutes'
 import favoritesRoutes      from './routes/favoritesRoutes'
@@ -21,6 +22,7 @@ router.use('/main-categories',  mainCategoryRoutes)
 router.use('/content',          contentRoutes)        
 router.use('/permissions',      permissionRoutes)      
 router.use('/journals',         journalRoutes)         
+router.use('/calendar',         calendarRoutes)
 router.use('/home-sections',    homeSectionRoutes)   
 router.use('/settings',         settingsRoutes)
 router.use('/favorites',        favoritesRoutes)

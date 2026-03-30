@@ -4,6 +4,7 @@ import { Content } from '../../domain/models/Content'
 import { Template } from '../../domain/models/Template'
 import { DeletedContentSnapshot } from '../../domain/models/DeletedContentSnapshot'
 import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
+import { didJournalMeaningfullyChange } from '../../application/calendarService'
 import { requireAuth } from '../middleware/authMiddleware'
 import { updateLastActive } from '../middleware/authMiddleware'
 
@@ -238,7 +239,7 @@ function sanitizeJournalPages(input: any): Array<{
 router.get('/mine', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
-    const journals = await Journal.find({ userId }).sort({ updatedAt: -1 }).lean()
+    const journals = await Journal.find({ userId, calendarDate: { $exists: false } }).sort({ updatedAt: -1 }).lean()
     const sourceMap = await loadSourcesByIds(journals.map((journal: any) => String(journal.templateId)))
 
     const enriched = journals
@@ -325,8 +326,8 @@ router.put('/recent-page', requireAuth, updateLastActive, async (req, res) => {
 
     if (!journal && templateId) {
       journal = await Journal.findOneAndUpdate(
-        { userId, templateId, copyNumber: 0 },
-        { userId, templateId, copyNumber: 0, $setOnInsert: { pageOrder: [] } },
+        { userId, templateId, copyNumber: 0, calendarDate: { $exists: false } },
+        { userId, templateId, copyNumber: 0, sourceKind: 'template', $setOnInsert: { pageOrder: [] } },
         { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
       )
     }
@@ -369,7 +370,7 @@ router.get('/for-template/:templateId', requireAuth, updateLastActive, async (re
   try {
     const userId = req.user!.id
     const { templateId } = req.params
-    const journals = await Journal.find({ userId, templateId }).sort({ copyNumber: 1 }).lean()
+    const journals = await Journal.find({ userId, templateId, calendarDate: { $exists: false } }).sort({ copyNumber: 1 }).lean()
     const sourceMap = await loadSourcesByIds([templateId])
 
     const enriched = journals
@@ -411,7 +412,7 @@ router.post('/create-copy', requireAuth, updateLastActive, async (req, res) => {
       return
     }
 
-    const existingCopies = await Journal.countDocuments({ userId, templateId, copyNumber: { $gt: 0 } })
+    const existingCopies = await Journal.countDocuments({ userId, templateId, copyNumber: { $gt: 0 }, calendarDate: { $exists: false } })
     if (existingCopies >= MAX_COPIES) {
       res.status(400).json({
         success: false,
@@ -420,7 +421,7 @@ router.post('/create-copy', requireAuth, updateLastActive, async (req, res) => {
       return
     }
 
-    const highest = await Journal.findOne({ userId, templateId, copyNumber: { $gt: 0 } })
+    const highest = await Journal.findOne({ userId, templateId, copyNumber: { $gt: 0 }, calendarDate: { $exists: false } })
       .sort({ copyNumber: -1 })
       .lean()
     const nextCopy = (highest?.copyNumber ?? 0) + 1
@@ -429,6 +430,7 @@ router.post('/create-copy', requireAuth, updateLastActive, async (req, res) => {
       userId,
       templateId,
       copyNumber: nextCopy,
+      sourceKind: 'template',
       pageOrder: pageOrder as PageOrderRef[],
     })
 
@@ -457,7 +459,7 @@ router.get('/', requireAuth, updateLastActive, async (req, res) => {
       res.status(400).json({ success: false, message: 'templateId or journalId is required' })
       return
     }
-    const journal = await Journal.findOne({ userId, templateId, copyNumber: 0 }).lean()
+    const journal = await Journal.findOne({ userId, templateId, copyNumber: 0, calendarDate: { $exists: false } }).lean()
     res.json({ success: true, data: journal })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
@@ -476,12 +478,29 @@ router.put('/', requireAuth, async (req, res) => {
     const nextPages = pages === undefined ? undefined : sanitizeJournalPages(pages)
 
     if (journalId) {
+      const existingJournal = await Journal.findOne({ _id: journalId, userId }).lean()
+      if (!existingJournal) {
+        res.status(404).json({ success: false, message: 'Journal not found' })
+        return
+      }
+
+      const meaningfulChange = didJournalMeaningfullyChange(existingJournal, {
+        pageOrder: pageOrder as PageOrderRef[],
+        pages: nextPages,
+      })
+
+      const updatePayload: Record<string, unknown> = {
+        pageOrder: pageOrder as PageOrderRef[],
+        ...(nextPages !== undefined ? { pages: nextPages } : {}),
+      }
+
+      if ((existingJournal as any).calendarDate && meaningfulChange) {
+        updatePayload.hasUserEdits = true
+      }
+
       const journal = await Journal.findOneAndUpdate(
         { _id: journalId, userId },
-        {
-          pageOrder: pageOrder as PageOrderRef[],
-          ...(nextPages !== undefined ? { pages: nextPages } : {}),
-        },
+        updatePayload,
         { returnDocument: 'after' }
       ).lean()
       if (!journal) {
@@ -497,11 +516,12 @@ router.put('/', requireAuth, async (req, res) => {
       return
     }
     const journal = await Journal.findOneAndUpdate(
-      { userId, templateId, copyNumber: 0 },
+      { userId, templateId, copyNumber: 0, calendarDate: { $exists: false } },
       {
         userId,
         templateId,
         copyNumber: 0,
+        sourceKind: 'template',
         pageOrder: pageOrder as PageOrderRef[],
         ...(nextPages !== undefined ? { pages: nextPages } : {}),
       },
