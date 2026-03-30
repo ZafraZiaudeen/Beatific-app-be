@@ -5,6 +5,29 @@ import { Category } from '../../domain/models/Category'
 import { Content } from '../../domain/models/Content'
 
 const router = Router()
+
+function toContentSummary(item: any) {
+  const pages = Array.isArray(item?.pages) ? item.pages : []
+  const firstPage = pages[0] ?? null
+
+  return {
+    _id: item._id,
+    name: item.name,
+    description: item.description,
+    itemType: item.itemType,
+    category: item.category,
+    subcategory: item.subcategory,
+    tags: item.tags ?? [],
+    svgContent: item.svgContent,
+    coverImageUrl: item.coverImageUrl,
+    isPublished: item.isPublished,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    pageCount: pages.length,
+    coverBackground: firstPage?.background,
+  }
+}
+
 router.get('/', async (_req, res) => {
   try {
     const perms = await Permission.find({ scope: 'home-section', enabled: true }).lean()
@@ -135,7 +158,7 @@ router.get('/', async (_req, res) => {
             slug: cat.slug,
             color: cat.color,
           },
-          content: items,
+          content: items.map(toContentSummary),
         })
       }
     }

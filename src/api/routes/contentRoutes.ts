@@ -5,31 +5,70 @@ import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnap
 
 const router = Router()
 
+function buildFilter(query: Record<string, string>) {
+  const { itemType, category, subcategory, search, isPublished } = query
+  const filter: Record<string, unknown> = {}
+
+  if (itemType) filter.itemType = itemType
+  if (category) filter.category = category
+  if (subcategory) filter.subcategory = subcategory
+  if (isPublished !== undefined) filter.isPublished = isPublished === 'true'
+
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+    ]
+  }
+
+  return filter
+}
+
 router.get('/', async (req, res) => {
   try {
-    const { itemType, category, subcategory, search, isPublished, page, limit } = req.query as Record<string, string>
-    const filter: Record<string, unknown> = {}
-
-    if (itemType) filter.itemType = itemType
-    if (category) filter.category = category
-    if (subcategory) filter.subcategory = subcategory
-    if (isPublished !== undefined) filter.isPublished = isPublished === 'true'
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ]
-    }
+    const query = req.query as Record<string, string>
+    const { page, limit, includePages } = query
+    const filter = buildFilter(query)
+    const includeFullPages = includePages === 'true'
 
     const pageNum = Math.max(1, parseInt(page ?? '1', 10))
     const limitNum = Math.min(100, parseInt(limit ?? '50', 10))
     const skip = (pageNum - 1) * limitNum
 
-    const [data, total] = await Promise.all([
-      Content.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
-      Content.countDocuments(filter),
-    ])
+    const totalPromise = Content.countDocuments(filter)
+
+    const dataPromise = includeFullPages
+      ? Content.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean()
+      : Content.aggregate([
+          { $match: filter },
+          { $sort: { createdAt: -1 } },
+          { $skip: skip },
+          { $limit: limitNum },
+          {
+            $project: {
+              name: 1,
+              description: 1,
+              itemType: 1,
+              category: 1,
+              subcategory: 1,
+              tags: 1,
+              svgContent: 1,
+              coverImageUrl: 1,
+              isPublished: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              pageCount: { $size: { $ifNull: ['$pages', []] } },
+              coverBackground: {
+                $let: {
+                  vars: { firstPage: { $arrayElemAt: ['$pages', 0] } },
+                  in: '$$firstPage.background',
+                },
+              },
+            },
+          },
+        ])
+
+    const [data, total] = await Promise.all([dataPromise, totalPromise])
 
     res.json({ success: true, data, total, page: pageNum, limit: limitNum })
   } catch (err: any) {
@@ -46,7 +85,6 @@ router.get('/:id', async (req, res) => {
       return
     }
 
-    // Fallback: check deleted snapshots so journal users can still view the content
     const contentSnap = await DeletedContentSnapshot.findOne({ sourceContentId: id }).lean()
     if (contentSnap) {
       res.json({ success: true, data: { ...contentSnap.snapshot, isSourceDeleted: true } })
