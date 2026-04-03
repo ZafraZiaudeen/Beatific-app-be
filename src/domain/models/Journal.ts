@@ -37,6 +37,13 @@ export interface IJournal {
   userId: string
   templateId: string
   copyNumber: number
+  calendarDate?: string
+  scheduleId?: string
+  sourceKind?: 'template' | 'scheduled' | 'manual-date'
+  slotLabel?: string
+  startTime?: string
+  hasUserEdits?: boolean
+  scheduleRevisionApplied?: number
   pageOrder: Array<number | string>
   pages?: IJournalPage[]
   recentPageActivity?: IJournalRecentPageActivity[]
@@ -90,6 +97,13 @@ const JournalSchema = new Schema<IJournal>(
     userId: { type: String, required: true, index: true },
     templateId: { type: String, required: true },
     copyNumber: { type: Number, required: true, default: 0 },
+    calendarDate: { type: String, index: true },
+    scheduleId: { type: String, index: true },
+    sourceKind: { type: String, enum: ['template', 'scheduled', 'manual-date'], default: 'template' },
+    slotLabel: { type: String },
+    startTime: { type: String },
+    hasUserEdits: { type: Boolean, default: false },
+    scheduleRevisionApplied: { type: Number },
     pageOrder: { type: [Schema.Types.Mixed], required: true },
     pages: { type: [JournalPageSchema], default: [] },
     recentPageActivity: { type: [RecentPageActivitySchema], default: [] },
@@ -97,7 +111,15 @@ const JournalSchema = new Schema<IJournal>(
   { timestamps: true }
 )
 
-JournalSchema.index({ userId: 1, templateId: 1, copyNumber: 1 }, { unique: true })
+JournalSchema.index(
+  { userId: 1, templateId: 1, copyNumber: 1 },
+  { unique: true, partialFilterExpression: { calendarDate: null } }
+)
+JournalSchema.index(
+  { userId: 1, scheduleId: 1, calendarDate: 1 },
+  { unique: true, partialFilterExpression: { scheduleId: { $exists: true }, calendarDate: { $exists: true } } }
+)
+JournalSchema.index({ userId: 1, calendarDate: 1 })
 JournalSchema.index({ userId: 1, updatedAt: -1 })
 
 export const Journal = model<IJournal>('Journal', JournalSchema)
@@ -116,12 +138,35 @@ export async function migrateJournals() {
       { pages: { $exists: false } },
       { $set: { pages: [] } }
     )
+    await Journal.updateMany(
+      { sourceKind: { $exists: false }, calendarDate: { $exists: false } },
+      { $set: { sourceKind: 'template', hasUserEdits: false } }
+    )
+    await Journal.updateMany(
+      { hasUserEdits: { $exists: false } },
+      { $set: { hasUserEdits: false } }
+    )
     await Journal.collection.dropIndex('userId_1_templateId_1').catch((err: any) => {
       const msg = err && (err.codeName || err.code || err.message)
       if (!/IndexNotFound|index not found/i.test(String(msg))) {
         console.warn('migrateJournals: dropIndex warning', err)
       }
     })
+    await Journal.collection.dropIndex('userId_1_templateId_1_copyNumber_1').catch((err: any) => {
+      const msg = err && (err.codeName || err.code || err.message)
+      if (!/IndexNotFound|index not found/i.test(String(msg))) {
+        console.warn('migrateJournals: dropIndex warning', err)
+      }
+    })
+    await Journal.collection.createIndex(
+      { userId: 1, templateId: 1, copyNumber: 1 },
+      { unique: true, partialFilterExpression: { calendarDate: null } }
+    )
+    await Journal.collection.createIndex(
+      { userId: 1, scheduleId: 1, calendarDate: 1 },
+      { unique: true, partialFilterExpression: { scheduleId: { $exists: true }, calendarDate: { $exists: true } } }
+    )
+    await Journal.collection.createIndex({ userId: 1, calendarDate: 1 })
   } catch (err: any) {
     console.warn('migrateJournals: migration skipped or failed', err)
   }

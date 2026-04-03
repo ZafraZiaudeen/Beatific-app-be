@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authService } from '../../application/authService'
+import { ensureUserCalendarBackfill } from '../../application/calendarService'
 import { verificationService } from '../../application/verificationService'
 import { requireAuth } from '../middleware/authMiddleware'
 import { updateLastActive } from '../middleware/authMiddleware'
@@ -28,6 +29,7 @@ router.post('/verify-registration', async (req, res) => {
       return
     }
     const data = await verificationService.verifyRegistrationCode(email.trim().toLowerCase(), code.trim())
+    await ensureUserCalendarBackfill(data._id)
     res.status(201).json({ success: true, data })
   } catch (err: any) {
     res.status(err.statusCode ?? 500).json({ success: false, message: err.message })
@@ -102,6 +104,7 @@ router.post('/login', async (req, res) => {
       return
     }
     const data = await authService.login({ email, password })
+    void ensureUserCalendarBackfill(data._id).catch(() => {})
     res.json({ success: true, data })
   } catch (err: any) {
     res.status(err.statusCode ?? 500).json({ success: false, message: err.message })
@@ -110,6 +113,7 @@ router.post('/login', async (req, res) => {
 
 router.get('/me', requireAuth, updateLastActive, async (req, res) => {
   try {
+    void ensureUserCalendarBackfill(req.user!.id).catch(() => {})
     const profile = await authService.getProfile(req.user!.id)
     res.json({ success: true, data: {
       _id: (profile as any)._id?.toString() ?? req.user!.id,
