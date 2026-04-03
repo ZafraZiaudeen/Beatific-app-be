@@ -113,7 +113,7 @@ const JournalSchema = new Schema<IJournal>(
 
 JournalSchema.index(
   { userId: 1, templateId: 1, copyNumber: 1 },
-  { unique: true, partialFilterExpression: { calendarDate: { $exists: false } } }
+  { unique: true, partialFilterExpression: { calendarDate: null } }
 )
 JournalSchema.index(
   { userId: 1, scheduleId: 1, calendarDate: 1 },
@@ -160,7 +160,7 @@ export async function migrateJournals() {
     })
     await Journal.collection.createIndex(
       { userId: 1, templateId: 1, copyNumber: 1 },
-      { unique: true, partialFilterExpression: { calendarDate: { $exists: false } } }
+      { unique: true, partialFilterExpression: { calendarDate: null } }
     )
     await Journal.collection.createIndex(
       { userId: 1, scheduleId: 1, calendarDate: 1 },

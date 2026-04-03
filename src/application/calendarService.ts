@@ -42,6 +42,14 @@ function addMonths(date: Date, months: number): Date {
   return copy
 }
 
+function listDateRange(start: Date, end: Date, max: number): string[] {
+  const results: string[] = []
+  for (let cursor = start; cursor <= end && results.length < max; cursor = addDays(cursor, 1)) {
+    results.push(toDateStr(cursor))
+  }
+  return results
+}
+
 function startOfTodayUtc(): Date {
   return toUtcDate(toDateStr(new Date()))
 }
@@ -62,7 +70,10 @@ function getWeekdayName(date: Date): string {
 }
 
 function buildJournalPagesFromContent(content: IContent): IJournalPage[] {
-  return (content.pages ?? []).map((page) => ({
+  const sourcePages = Array.isArray(content.pages) ? content.pages : []
+  const journalPages = sourcePages.length > 1 ? sourcePages.slice(1) : sourcePages
+
+  return journalPages.map((page) => ({
     pageId: page.id,
     sourcePageId: page.id,
     name: page.name,
@@ -103,7 +114,7 @@ function buildJournalSeed(args: {
 }
 
 function listOccurrences(
-  schedule: Pick<ICalendarSchedule, 'mode' | 'exactDate' | 'recurrence'>,
+  schedule: Pick<ICalendarSchedule, 'mode' | 'exactDate' | 'exactEndDate' | 'recurrence'>,
   options?: { from?: string; to?: string; max?: number }
 ): string[] {
   const from = options?.from ? toUtcDate(options.from) : startOfTodayUtc()
@@ -112,9 +123,12 @@ function listOccurrences(
 
   if (schedule.mode === 'exact') {
     if (!schedule.exactDate) return []
-    const exact = toUtcDate(schedule.exactDate)
-    if (exact < from || exact > to) return []
-    return [schedule.exactDate]
+    const exactStart = toUtcDate(schedule.exactDate)
+    const exactEnd = schedule.exactEndDate ? toUtcDate(schedule.exactEndDate) : exactStart
+    const windowStart = exactStart > from ? exactStart : from
+    const windowEnd = exactEnd < to ? exactEnd : to
+    if (windowEnd < windowStart) return []
+    return listDateRange(windowStart, windowEnd, max)
   }
 
   if (!schedule.recurrence?.startDate) return []
@@ -441,7 +455,7 @@ export async function getCalendarDate(userId: string, calendarDate: string) {
 }
 
 export function listUpcomingOccurrences(
-  schedule: Pick<ICalendarSchedule, 'mode' | 'exactDate' | 'recurrence'>,
+  schedule: Pick<ICalendarSchedule, 'mode' | 'exactDate' | 'exactEndDate' | 'recurrence'>,
   max = 12
 ) {
   return listOccurrences(schedule, { max })

@@ -1,7 +1,8 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { Journal } from '../../domain/models/Journal'
 import { Content } from '../../domain/models/Content'
 import { Template } from '../../domain/models/Template'
+import { CalendarSchedule } from '../../domain/models/CalendarSchedule'
 import { DeletedContentSnapshot } from '../../domain/models/DeletedContentSnapshot'
 import { DeletedTemplateSnapshot } from '../../domain/models/DeletedTemplateSnapshot'
 import { didJournalMeaningfullyChange } from '../../application/calendarService'
@@ -156,6 +157,11 @@ function buildJournalResponse(journal: any, loadedSource?: LoadedSource | null) 
     pageOrder: journal.pageOrder,
     updatedAt: journal.updatedAt,
     createdAt: journal.createdAt,
+    calendarDate: journal.calendarDate,
+    scheduleId: journal.scheduleId,
+    sourceKind: journal.sourceKind,
+    slotLabel: journal.slotLabel,
+    startTime: journal.startTime,
     isSourceDeleted: loadedSource.isSourceDeleted,
     content: {
       _id: source._id,
@@ -167,6 +173,43 @@ function buildJournalResponse(journal: any, loadedSource?: LoadedSource | null) 
       pageCount: source.pageCount ?? 0,
     },
   }
+}
+
+function canDeleteJournal(journal: any): boolean {
+  if (!journal?.calendarDate) {
+    return true
+  }
+
+  return journal.sourceKind === 'manual-date'
+}
+
+function resolveLocalDate(req: Request): string {
+  const header = String(req.headers['x-local-date'] || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(header)) {
+    return header
+  }
+
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function loadScheduleVisibilityMap(scheduleIds: string[]) {
+  const uniqueIds = [...new Set(scheduleIds.filter(Boolean))]
+  const visibilityMap = new Map<string, 'date-only' | 'always-visible'>()
+  if (!uniqueIds.length) return visibilityMap
+
+  const schedules = await CalendarSchedule.find(
+    { _id: { $in: uniqueIds } },
+    { visibilityMode: 1 }
+  ).lean()
+
+  schedules.forEach((schedule: any) => {
+    visibilityMap.set(
+      String(schedule._id),
+      schedule.visibilityMode === 'always-visible' ? 'always-visible' : 'date-only'
+    )
+  })
+
+  return visibilityMap
 }
 
 function sanitizeDrawingPaths(input: any): SyncedDrawingPath[] {
@@ -239,7 +282,12 @@ function sanitizeJournalPages(input: any): Array<{
 router.get('/mine', requireAuth, updateLastActive, async (req, res) => {
   try {
     const userId = req.user!.id
-    const journals = await Journal.find({ userId, calendarDate: { $exists: false } }).sort({ updatedAt: -1 }).lean()
+    const journals = await Journal.find({
+      userId,
+      calendarDate: { $exists: false },
+    })
+      .sort({ updatedAt: -1 })
+      .lean()
     const sourceMap = await loadSourcesByIds(journals.map((journal: any) => String(journal.templateId)))
 
     const enriched = journals
@@ -370,14 +418,18 @@ router.get('/for-template/:templateId', requireAuth, updateLastActive, async (re
   try {
     const userId = req.user!.id
     const { templateId } = req.params
-    const journals = await Journal.find({ userId, templateId, calendarDate: { $exists: false } }).sort({ copyNumber: 1 }).lean()
+    const journals = await Journal.find({ userId, templateId }).sort({ updatedAt: -1, copyNumber: 1 }).lean()
     const sourceMap = await loadSourcesByIds([templateId])
 
     const enriched = journals
       .map((journal: any) => buildJournalResponse(journal, sourceMap.get(String(journal.templateId))))
       .filter(Boolean)
 
-    res.json({ success: true, data: enriched, copyCount: journals.filter(j => (j.copyNumber ?? 0) > 0).length })
+    res.json({
+      success: true,
+      data: enriched,
+      copyCount: journals.filter((journal: any) => !journal.calendarDate && (journal.copyNumber ?? 0) > 0).length,
+    })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
   }
@@ -537,11 +589,18 @@ router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id
     const { id } = req.params
-    const deleted = await Journal.findOneAndDelete({ _id: id, userId }).lean()
-    if (!deleted) {
+    const existing = await Journal.findOne({ _id: id, userId }).lean()
+    if (!existing) {
       res.status(404).json({ success: false, message: 'Journal not found' })
       return
     }
+
+    if (!canDeleteJournal(existing)) {
+      res.status(403).json({ success: false, message: 'Admin-scheduled journals cannot be removed.' })
+      return
+    }
+
+    await Journal.deleteOne({ _id: id, userId })
     res.json({ success: true, data: { _id: id } })
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message })
